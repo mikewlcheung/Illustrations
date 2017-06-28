@@ -1,0 +1,136 @@
+---
+title: 'Illustrations Nohe et al. (2015, Table A1)'
+author: "Mike Cheung and Suzanne Jak"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    keep_md: yes
+    self_contained: yes
+    theme: united
+    toc: yes
+  pdf_document:
+    toc: yes
+  word_document: default
+---
+
+# Summary statistics
+```{r, message=FALSE}
+## Libraries used in the analyses
+library(lavaan)
+library(metaSEM)
+library(ggplot2)
+
+options(digits=4)
+
+## Display the numbers of studies aggregated in each correlation
+pattern.na(Nohe15A1$data, show.na = FALSE)
+
+## Display the sample sizes aggregated in each correlation
+pattern.n(Nohe15A1$data, Nohe15A1$n)
+
+## Descriptive statistics of the sample sizes
+summary(Nohe15A1$n)
+
+## Plot the distribution of the sample sizes
+qplot(n, data=data.frame(n=Nohe15A1$n), geom="histogram", 
+      main="Distribution of sample sizes (Noeh et al., 2015, Table A1)",
+      xlab="Sample size", ylab="Count", fill=I("blue"), binwidth=50)
+```
+
+# Univariate-r approach
+## Stage 1 analysis
+```{r}
+uni1 <- uniR1(Nohe15A1$data, Nohe15A1$n)
+uni1
+
+## SEs estimated from stage 1 analysis
+uni1$r.SE
+
+## SEs used in SEM
+SEs_SEM <- vec2symMat(sqrt(diag(asyCov(uni1$r.mean, uni1$n.harmonic))), diag=FALSE)
+diag(SEs_SEM) <- NA
+SEs_SEM
+```
+
+```{r, warning=FALSE}
+model1a <- 'W2 + S2 ~ W1 + S1'
+uni2a <- uniR2lavaan(uni1, model1a, fixed.x=FALSE)
+summary(uni2a)
+
+as.data.frame( unclass( parameterEstimates(uni2a) ) )
+
+semPlot::semPaths(uni2a, whatLabels="est", sizeMan=8, 
+                  edge.label.cex=1.5, color="yellow",
+                  edge.color = "black", weighted=FALSE)
+
+## Equal regression coefficients
+model1b <- 'W2 ~ same*W1 + cross*S1
+            S2 ~ cross*W1 + same*S1'
+uni2b <- uniR2lavaan(uni1, model1b, fixed.x=FALSE)
+summary(uni2b, fit.measures=TRUE)
+
+## Compare these two models
+anova(uni2a, uni2b)
+```
+
+# TSSEM
+```{r, warning=FALSE}
+rand <- tssem1(Nohe15A1$data, Nohe15A1$n, method="REM", RE.type="Diag")
+summary(rand)
+
+## Average correlation matrix
+vec2symMat(coef(rand, select="fixed"), diag=FALSE)
+
+## SE of the average correlation matrix
+vec2symMat(sqrt(diag(vcov(rand, select="fixed"))), diag=FALSE)
+
+## Heterogeneity (SD) of the average correlation matrix
+vec2symMat(sqrt(coef(rand, select="random")), diag=FALSE)
+
+model2a <- 'W2 ~ W2W*W1 + S2W*S1
+            S2 ~ W2S*W1 + S2S*S1
+            W1 ~~ W1cS1*S1
+            W2 ~~ W2cS2*S2
+            W1 ~~ 1*W1
+            S1 ~~ 1*S1
+            W2 ~~ ErrW2*W2
+            S2 ~~ ErrS2*S2'
+
+RAM1a <- lavaan2RAM(model2a, obs.variables=c("W1", "S1", "W2", "S2"))
+RAM1a
+
+rand2a <- tssem2(rand, Amatrix=RAM1a$A, Smatrix=RAM1a$S)
+summary(rand2a)
+
+my.plot <- meta2semPlot(rand2a)
+semPlot::semPaths(my.plot, whatLabels="est", sizeMan=8, edge.label.cex=1.5, 
+                  color="yellow", edge.color = "black", weighted=FALSE)
+
+## Equal regression coefficients
+model2b <- 'W2 ~ same*W1 + cross*S1
+            S2 ~ cross*W1 + same*S1
+            W1 ~~ W1cS1*S1
+            W2 ~~ W2cS2*S2
+            W1 ~~ 1*W1
+            S1 ~~ 1*S1
+            W2 ~~ ErrW2*W2
+            S2 ~~ ErrS2*S2'
+
+RAM1b <- lavaan2RAM(model2b, obs.variables=c("W1", "S1", "W2", "S2"))
+RAM1b
+
+rand2b <- tssem2(rand, Amatrix=RAM1b$A, Smatrix=RAM1b$S)
+summary(rand2b)
+
+## Compare these two models
+anova(rand2a, rand2b)
+
+sessionInfo()
+```
+
+
+
+
+
+
+
